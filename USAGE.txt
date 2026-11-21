@@ -1,0 +1,335 @@
+Course Helper — Local, version 3.0.5
+
+I maintain this guide for installing, using, and troubleshooting my fork.
+
+Final confirmation (3.0.5)
+With Submit answers enabled, I handle the native final confirmation flow.
+For exams that omit answered accessibility labels, I require one active
+Submit Page and a complete, unique Q1 through Qn strip with no active question.
+I check the uniquely labeled Yes, confirm my submission checkbox, wait for
+the course to enable Submit, revalidate after the action delay, and click it
+once. I reject partial or duplicate strips, ambiguous confirmation controls,
+and route changes. For labeled strips, I retain the answered-label check.
+
+Multiple-selection scoring (3.0.4)
+I support the observed SMV full-credit option list and per-correct-option
+interpretation strings. For choose-two and choose-three questions, I require
+all interpretations to agree on the complete set and match _selectable.
+I reject duplicate, out-of-range, conflicting or unsupported option lists.
+Auto matches checkbox labels by text, clears incorrect selections first,
+and submits only after the native controls satisfy the complete plan.
+I also bind nested nextQuestion responses to their own index, so the prior
+answered question's index cannot be confused with the next question.
+Choice diagnostics include the selection count and bounded interpretation
+text. Unsupported scoring now has a specific status. Native advancement or
+results retire locally submitted widgets that keep enabled inputs.
+
+Secure assessment transitions (3.0.3)
+I inspect existing HTTPS v3 JSON responses from ssac-backend.netacad.com for
+supported component records, including state responses. I leave responses
+without component records unchanged. I use the native response URL when
+available and support URL-like request objects from other browser contexts.
+For indexed question responses, I bind the local model to its requesting
+page and the active Q-number button. Retained earlier questions no longer
+block the current question; reviewing an earlier question makes it eligible
+again. I still require native submission and course completion signals.
+
+Secure assessment questions (3.0.2)
+I added support for the existing HTTPS response from
+ssac-backend.netacad.com/v3/getQuestionAt/ through fetch or XMLHttpRequest.
+Some single-choice questions omit _shouldBeSelected and instead include an
+SMV scoring interpretation. I accept only positive-score-for-one-option,
+zero-for-all-others interpretations that all agree on an in-range option.
+I derive selection requirements locally and match by answer text after the
+course shuffles its labels. I leave the original scoring fields unchanged.
+Missing, conflicting or unfamiliar interpretations stay unsupported.
+Multiple-selection formats are covered by the 3.0.4 handler above. I send no additional requests and preserve the original XHR body.
+
+Assessment question discovery (3.0.1)
+I recognize native question-strip buttons such as Q1 even when they have no
+accessibility label, so an open exam no longer returns to its hidden intro.
+Unlabeled buttons alone do not authorize final submission; the separate
+3.0.5 native review flow handles their confirmation stage. I also
+observe existing same-origin assessment XMLHttpRequest JSON responses for
+supported component schemas, without changing their bodies or sending any
+additional requests. If the question schema is unavailable, Auto explains
+that limitation. Debug report includes question-button and capture counts.
+After updating, reload the course tab so I can observe its initial requests.
+If the message persists, I need the response that loads the visible question.
+Open Firefox Developer Tools (F12), select Network, reload, and look under
+Fetch/XHR for the question text. If it isn't there, check the full request
+list. Include the request URL path, content type, and redacted Response body
+alongside Debug report. Leave out headers, cookies, tokens, launch keys, and
+personal information. Debug report contains counts, not the response body;
+those counts alone cannot establish the transport or question schema.
+
+Certification exam navigation (3.0.0)
+I added navigation between exams within the same certification group, even
+while the group is only partially complete. Auto requires an active Result
+Page, an explicit course page-completion marker, answered questions in the
+rendered strip, and a unique following exam within the current route's group.
+Large results strips can show only their final question window. Final
+submission uses answered labels or the explicit native review flow described
+above, including a complete question strip and the course-enabled Submit.
+
+Results navigation (2.9.8)
+Auto can follow the course Next arrow from a completed assessment result
+to a destination inside a collapsed outline group. This requires the current
+route's own outline entry at 100%, one active Result Page, and every numbered
+question answered. Reset and Review Assessment are not navigation targets.
+
+Continuous Auto and diagnostics (2.9.7)
+1. Save the updated userscript and reload the course tab.
+2. Open Options and select Record performance (60s).
+3. Run Auto until the slowdown or Performance pause occurs.
+4. Select Performance report and copy the selected JSON.
+
+Performance report reads saved measurements without discovering DOM widgets;
+it is cheaper than the full Debug report. Recording is local, stops after
+60 seconds, and keeps at most 30 samples per list. It records named helper
+phases, queries, roots, style reads, retained component count, observer/refresh
+counters, slow selectors, browser long tasks where supported, and timer delay.
+Browser task overlap is evidence of timing, not proof of which script caused it.
+No report is transmitted automatically.
+
+Auto scans have a 250 ms cooperative budget. An over-budget read pauses Auto,
+background refreshes and connection spotlight work. Start auto explicitly
+retries; copy Performance report before retrying. Checks can interrupt loops
+between reads but cannot interrupt an individual browser DOM/layout/JSON call.
+Initial response processing and popup/recovery scans are also measured.
+
+Discovery now reads text without cloning course custom elements or guides.
+Auto scans at most eight schemas or about 12 ms before yielding to the browser.
+A single DOM call can still exceed that target. Stop and route changes cancel
+the scan; caches are rebuilt after every yield. Composed spotlight events are
+handled once even when several shadow-root listeners receive the same event.
+Hidden/unavailable records skip widget lookup. Runtime fallback lookup ignores
+hidden retained questions. Delayed activity clicks are discarded if the lesson
+route changes. Performance report includes the last discovery summary: eligible
+components, processed records, batches, yields, elapsed time and cancellation
+reason. Elapsed discovery time includes yields; individual read timings do not.
+
+Performance: synchronous plans share DOM discovery and text reads, with no
+DOM cache retained across actions or waits. Player/guide mutations do not
+trigger full refreshes. Hidden tabs skip discovery. Debug report includes
+readPerformance timings and work counters. See PERFORMANCE.txt for the audit
+and reproducible operation-count comparison.
+
+Adaptive assessment introductions recognize a unique Start role button even
+when the introduction is already marked complete or has no configured label.
+With Submit answers enabled, Auto resolves a unique rendered Start control,
+scrolls it into view and clicks it. A visible intro heading no longer requires
+the Start button itself to already be onscreen. If the intro remains open,
+Auto retries after 10 seconds, then 20, then at most every 30 seconds. It
+rechecks for a question strip and for the same unique Start before clicking;
+completed intro styling alone does not prevent starting the quiz.
+
+Top-level exam navigation recognizes Practice Final, Final and named Checkpoint
+Exam destinations in the course outline. A module boundary requires the current
+module at 100% and the destination immediately after it. Between assessments,
+the active Result Page and a fully answered numbered strip are required.
+
+INSTALL
+Replace the existing script in Tampermonkey with netacad-local.user.js,
+save, and reload the course. If importing creates a second script, disable
+the old version so that only one copy runs. script contains the same code;
+netacad-local.user.js is the import-ready copy.
+
+CONTROLS
+Show answers: highlight correct multiple-choice options and show a compact,
+collapsible answer guide for connections, matching, fill blanks, sliders,
+stackers, and yes/no activities. Connection keys remain untouched.
+Connection confirmation checks the extra letter badge outside the full source
+and answer text. An answer beginning with "A " is not itself a connection
+badge; unregistered connections are retried until the course assigns one.
+Native matching endpoints resolve within their source/answer column using the
+full schema label and optional badge. A feature literally named "A" cannot be
+confused with another row's A badge. Rendered offscreen controls are resolved
+before scrolling; Manual Fill leaves offscreen pairs pending. Ambiguous labels
+remain blocked. Debug report lists expected pairs, resolution/confirmation flags
+and the specific missing or ambiguous endpoint.
+
+Duplicate choice text is supported when every schema item with that text has
+the same selection requirement and the number of distinct rendered controls
+matches. Duplicate distractors no longer block a distinct correct answer.
+Conflicting requirements remain blocked. Duplicate selected answers require
+checkbox controls. The script never uses screen order to guess between options.
+Debug report includes expected choice flags and resolved control IDs.
+
+Fill visible: interact with supported questions currently visible in the
+viewport. Clicking Cancel fill or pressing Escape cancels pending actions.
+Auto can scroll individual dropdown rows, connection endpoints, lesson slides,
+and the Submit footer into view.
+Hidden native selects with a rendered proxy and accessible listbox portals
+are supported, including course js-dropdown-btn controls with row-local
+options. Graphic matching associates dropdowns with image asset sources
+(or alt text when no source is provided), independent of row order.
+For separate image/dropdown containers, a complete mutual unique pairing
+based on horizontal overlap and vertical proximity is required.
+Ambiguous image identities or layout ties are reported instead of guessed.
+Graphic answer guides use thumbnails from the existing rendered images.
+Asset identities are compared independently of the document base URL, so
+nested authoring folders do not duplicate the course or en-US path.
+Fill visible leaves offscreen rows pending.
+
+Start auto: repeatedly check supported visible questions and lesson items.
+With Continue through course enabled, scroll through the lesson and follow
+a unique Next control after the course reports completion. Quiz Next needs
+a finished question; module/section Next needs a completed current page.
+The NetAcad shell's “Go To …” Next arrow uses the current section's outline
+completion counter.
+The destination may be a title-only exam entry with no completion counter;
+the required completion counter is read from the preceding/current section.
+For a cross-module "Go To N.0. Introduction" arrow, the previous numbered
+module's own 100% progress permits navigation even if the next outline is
+collapsed. Pending questions and unfinished activities still block Next.
+For a generic "Go To Checkpoint Exam" arrow, the current frame's module
+number identifies the completed module. Its immediately following outline
+entry must be a checkpoint range ending at that module.
+Auto handles visible work in screen order and rechecks the page after
+interacting with a widget. It never jumps to a later pending
+question before handling the visible lesson. A video transcript footer alone
+does not take priority over visible question controls.
+At the bottom of the section, Auto returns to earlier unfinished activities.
+If no unfinished widgets are rendered but the outline reports an incomplete
+lesson group, Auto can reopen its first numbered lesson through an available
+outline link. Recovery is attempted once per progress state; native completion
+must still update before Next is allowed. This covers earlier unread content
+that has no discoverable widget at the current scroll position. Debug report
+includes the group, recovery target, and whether recovery was attempted.
+Completed, optional, hidden, and unavailable activities are excluded from
+required completion checks.
+Decorative dynamic-graphic records do not block navigation or trigger recovery;
+their owning lesson widgets still require normal course completion.
+A known unfinished required activity blocks Next even if another completion
+marker is present. Navigation is checked again
+after its delay in case the page or destination changed.
+Pending questions survive scrolling changes to the URL's view parameter.
+Debug reports include their generation time, page URL, Auto state, resolved
+Next control, latest navigation decision and last attempted navigation click.
+Start auto explicitly starts a continuous session for this course in this tab.
+It resumes across module-button transitions, replacement course frames and
+reloads, including changed module URLs. Session intent is stored in the tab's
+sessionStorage, scoped by course ID; it does not start a different course.
+Stop auto or Escape cancels pending actions and clears that session intent.
+Transient control errors retain Auto and retry with exponential backoff from
+1 to 30 seconds. Performance report includes the latest error and retry count.
+An oversized synchronous read still pauses Auto; paused intent stays paused
+across reloads until Start auto is pressed. Session persistence requires browser
+sessionStorage access. Without an active course session, the older exact-link
+resume remains limited to its planned destination for 60 seconds.
+Auto continues following native completion and Next controls through the course;
+it does not impose a pause at module boundaries. At missing/unsupported controls
+it keeps watching for a change; it cannot manufacture course completion.
+
+Paced interactions: random pauses of 650–1799 ms between interactions.
+Turning this off uses 90 ms pauses. This does not simulate a physical mouse
+or make browser-generated events trusted.
+
+Submit answers: off by default. When enabled, submit supported questions
+only after rechecking their controls and allow assessment Start controls.
+The adaptive assessment final review screen is handled before unfinished
+activity recovery. Auto requires a complete numbered strip marked answered,
+checks the unique "Yes, confirm my submission" checkbox, then rechecks the
+enabled final Submit button on the next pass and clicks it once.
+The old Start screen no longer blocks recovery after the quiz strip appears.
+Auto closes the course feedback popup before its next action. Manual Fill
+pauses until you close feedback. It never closes the course window.
+Connections with letter badges are checked against the assigned letters;
+clicks that did not register remain pending. Narrative slides are opened
+one at a time and checked against the course's visited flags; clicking alone
+does not mark a narrative slide visited in the helper.
+Tab activities are handled separately: Auto opens each tab and brings the
+bottom of its content into view, including tabs already marked visited
+when the overall activity is incomplete. It then waits for the course
+completion marker. Debug reports include completion mode and tab visits.
+
+Lab downloads: off by default. Click the lab's primary file link or a unique
+Download button once per file in this document. Titled open-dialog buttons
+inside a single-item lab widget, such as Mobile Device Information, open
+once per lab even if the button re-renders. Auto scrolls the viewer button
+into view before clicking. This may save a file or open the course's lab
+viewer. During these clicks, ordinary file-link navigation and synchronous
+window.open calls are suppressed. Asynchronous new tabs may still open.
+The normal course click handlers still run; no progress records are edited.
+
+Connection spotlight: with Show answers enabled, click or focus a source
+to outline its correct destination and its guide row. The original answer
+guide stays available. Matching keys and randomization stay intact.
+
+Move the panel by dragging its heading. Focus the heading and use arrow
+keys to move it with a keyboard; Home restores the default position. The
+position is saved and clamped to the viewport when the window is resized.
+
+System theme follows the browser's OS color-scheme preference, including
+changes while the course is open. Course theme follows the page data-theme.
+Light and Dark override either preference.
+
+Answer color and panel theme are saved locally. Old answer-color and
+show-answer preferences migrate automatically where browser storage allows.
+
+SUPPORT AND LIMITS
+Autofill supports identifiable multiple-choice controls, including answers
+below the viewport that Auto can scroll into view; native matching/
+fill-blank dropdowns, native range sliders, and connection endpoints with
+unique accessible text. Connections are paired by question/answer text,
+independent of shuffled positions. Unsupported or ambiguous controls are
+reported for manual interaction. Custom drag/drop controls and yes/no widgets
+still require manual interaction. Quiz/exam radio and checkbox
+labels ignore hidden screen-reader position text. Completed questions with
+locked controls can advance. Auto does not change progress records.
+Adobe Animate activities are supported in Auto. A unique playback button plus
+one native range timeline identifies the player, including the blank button
+used by Firewall Operation. Auto scrolls to and starts that toggle once, then
+observes timeline progress and waits for the course completion marker. It does
+not write the timeline value or dispatch completion events. An explicitly
+labeled Play button can be retried after a stall; an unlabeled toggle is not
+repeatedly clicked because that could pause an animation already playing.
+Ambiguous controls remain blocked with an animation-specific status. Debug
+report includes playback labels, timeline values and observed playback state.
+
+For accessible native video/audio
+players, Auto clicks the Video.js Play button, waits for a finite duration,
+scrolls an offscreen Play button into view, seeks once to one second before
+the end, and waits for actual playback and course completion.
+Resume waits until seeking finishes. If the player remains paused, Auto retries
+playback with a 2–30 second backoff rather than giving up after one attempt.
+An unresolved play promise can be retried after at least 10 seconds (subject
+to the backoff). The seek itself remains one-time; no synthetic completion
+or ended events are dispatched. Detached players are not played by stale plans.
+Debug report includes current time, duration, paused/ended/seeking flags,
+player readiness/error codes and playback attempts, pending state and errors.
+Visible questions take priority over video footers;
+a waiting video no longer prevents other visible activities from running.
+If browser autoplay is blocked, press Play manually.
+Closed/cross-origin players may still require manual interaction.
+Unknown completion markers or ambiguous navigation controls
+require manual navigation. Completion is not guaranteed.
+
+I observe open shadow roots and existing components.json fetch responses,
+plus fetch and same-origin XMLHttpRequest assessment/question JSON responses
+containing the same component schema. Closed shadow roots, other schemas/transports, and frames
+outside the userscript's match may need further adaptation. Same-origin
+parent navigation controls are supported when accessible.
+
+PRIVACY
+No remote fonts, telemetry sender, update checks, remote UI assets, or
+independent network requests. Interacting with course controls can trigger
+the course's normal requests. Settings are stored in this browser.
+
+VALIDATION
+node tests/script.test.cjs
+I test with mocked browser APIs, a six-pair connection fixture, Firefox
+quiz-label structure, and native Submit/Next labels and classes. Auto-mode checks cover visible narratives with later
+pending questions, widget rechecks, unregistered slide clicks, unfinished
+required activities, and route changes during navigation delays.
+I still need to verify these behaviors in a live Firefox course session.
+
+If an activity stalls, open Options and click Debug report. The selected
+text describes the active activity and phase, all known unfinished required
+activities, visible controls, and Next candidates. Graphic matching reports
+also include the source image metadata, answer options, image/dropdown
+bounds, asset match counts, document base URL, and visual pairing count.
+Copy it for troubleshooting;
+it is not transmitted anywhere
+automatically. Status messages now report missing or ambiguous controls.

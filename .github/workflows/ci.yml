@@ -1,0 +1,33 @@
+name: Validate and prepare
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test and prepare local release assets
+        run: npm run release:prepare
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+      - name: Save assets for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: course-helper-release-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error

@@ -1,0 +1,97 @@
+{
+  "message": "Question index 8 updated.",
+  "nextQuestion": {
+    "component": {
+      "_id": "secure-question-multi",
+      "_component": "mcq",
+      "_type": "component",
+      "body": "<p>Select the three labels marked Star in this invented collection. (Choose three.)</p>",
+      "title": "Question",
+      "_items": [
+        {
+          "text": "Star amber",
+          "feedback": ""
+        },
+        {
+          "text": "Plain blue",
+          "feedback": ""
+        },
+        {
+          "text": "Star coral",
+          "feedback": ""
+        },
+        {
+          "text": "Star dotted",
+          "feedback": ""
+        },
+        {
+          "text": "Plain emerald",
+          "feedback": ""
+        },
+        {
+          "text": "Plain fawn",
+          "feedback": ""
+        }
+      ],
+      "_isRandom": true,
+      "_selectable": 3,
+      "_isAvailable": true,
+      "_canShowModelAnswer": false,
+      "_smvWiseScoring": {
+        "outcomes": {
+          "decvar": [
+            {
+              "title": "correctness of response",
+              "_varname": "score-one",
+              "_maxvalue": 1
+            },
+            {
+              "title": "correctness of response",
+              "_varname": "score-two",
+              "_maxvalue": 2
+            }
+          ],
+          "interpretvar": [
+            {
+              "_view": "All",
+              "_varname": "score-one",
+              "interpret": "1 point for Option 1, Option 3, Option 40 points for any other option"
+            },
+            {
+              "_view": "All",
+              "_varname": "score-two",
+              "interpret": "Option 1, Option 3, and Option 4 are correct.1 point for each correct option.0 points if more options are selected than required."
+            }
+          ]
+        }
+      }
+    },
+    "index": 9,
+    "isLastQuestion": false,
+    "message": "getQuestionV2 questionIndex: 9  highestPresentedQuestionIndex: 9",
+    "block": {
+      "_id": "secure-block-multi",
+      "_type": "block"
+    }
+  },
+  "nextQuestionIndex": 9,
+  "index": 8,
+  "component": {
+    "_id": "previous-question",
+    "component": "mcq",
+    "userAnswer": [
+      true,
+      false,
+      false,
+      false
+    ],
+    "_items": [
+      {
+        "text": "Previous choice",
+        "_isActive": true
+      }
+    ],
+    "interactionType": "choice"
+  },
+  "timeLeft": "infinite"
+}

@@ -1,0 +1,66 @@
+{
+  "component": {
+    "_id": "secure-question-two",
+    "_component": "mcq",
+    "_type": "component",
+    "body": "<p>In this fictional set of tiles, which label appears last?</p>",
+    "title": "Question",
+    "_items": [
+      {
+        "text": "Amber square",
+        "feedback": ""
+      },
+      {
+        "text": "Blue square",
+        "feedback": ""
+      },
+      {
+        "text": "Coral square",
+        "feedback": ""
+      },
+      {
+        "text": "Dotted square",
+        "feedback": ""
+      }
+    ],
+    "_isRandom": true,
+    "_selectable": 1,
+    "_isAvailable": true,
+    "_canShowModelAnswer": false,
+    "_smvWiseScoring": {
+      "outcomes": {
+        "decvar": [
+          {
+            "title": "correctness of response",
+            "_varname": "score-one",
+            "_maxvalue": 1
+          },
+          {
+            "title": "correctness of response",
+            "_varname": "score-two",
+            "_maxvalue": 2
+          }
+        ],
+        "interpretvar": [
+          {
+            "_view": "All",
+            "_varname": "score-one",
+            "interpret": "1 point for Option 40 points for any other option"
+          },
+          {
+            "_view": "All",
+            "_varname": "score-two",
+            "interpret": "2 points for Option 40 points for any other option"
+          }
+        ]
+      }
+    }
+  },
+  "index": 1,
+  "isLastQuestion": false,
+  "message": "getQuestionV2 questionIndex: 1  highestPresentedQuestionIndex: 1",
+  "block": {
+    "_id": "secure-block-two",
+    "_type": "block"
+  }
+}

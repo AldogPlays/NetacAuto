@@ -1,0 +1,16 @@
+{
+  "name": "course-helper-local",
+  "version": "3.0.5",
+  "private": true,
+  "description": "Local userscript assistance for supported Cisco Networking Academy activities.",
+  "license": "GPL-3.0-only",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "check": "node tools/check.cjs",
+    "test": "node tests/script.test.cjs",
+    "benchmark": "node tests/performance.cjs",
+    "sync": "node tools/sync.cjs",
+    "build": "npm run check && node tools/build-release.cjs",
+    "release:prepare": "npm test && npm run build"
+  }
+}

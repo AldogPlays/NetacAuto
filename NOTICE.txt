@@ -1,0 +1,15 @@
+NetacAuto (installed as Course Helper — Local)
+
+This is a modified fork of CiscoNetacad Cheat: Show Answers, version 1.0.0,
+by byOscar (ByOscarPINE). The upstream userscript declares @license GPLv3.
+Upstream source and license declaration, verified 2026-11-20:
+https://greasyfork.org/en/scripts/587797-cisconetacad-cheat-show-answers/code
+
+Copyright (C) 2026 Jeffrey Conton and NetacAuto contributors for their changes.
+The fork adds local preferences, activity assistance, navigation, diagnostics,
+regression tests and release tooling. Upstream author credit is retained.
+
+NetacAuto is distributed under GNU GPL version 3 only (GPL-3.0-only).
+The complete license and warranty terms are in LICENSE.
+Assessment test content consists of invented examples rather than a course
+question or answer collection. Cisco does not sponsor or endorse this project.

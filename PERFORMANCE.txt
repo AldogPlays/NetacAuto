@@ -1,0 +1,367 @@
+Course Helper performance audit — 2026-11-18
+
+Finding
+I found credible sources of browser main-thread load and reproduced
+redundant DOM operations. I did not capture a live browser trace or establish
+that my script was the sole cause of the browser warning.
+
+Main hot paths
+1. all(scope, selector) rediscovered every open shadow root by calling
+   querySelectorAll('*') before every query. Nested matching, endpoint,
+   submission and navigation helpers repeatedly walked the same subtrees.
+2. scopeFor searched every root separately for every retained component.
+   For absent multiple-choice schemas, it repeatedly queried the same runtime
+   question candidates and cloned their DOM to extract text. components is a
+   session-wide Map, so revisiting more course sections increased the work.
+3. Mutation observers scheduled full refreshes up to once every 250 ms for
+   child-list changes, including player controls/captions and guide previews.
+   Refresh itself discovers roots, updates highlights and scans graphic guides.
+4. Auto still performed discovery in hidden tabs although individual controls
+   were unavailable. Debug reports and connection highlighting also repeated
+   the same root and text discovery.
+
+Changes in 2.7.0
+- Share shadow-root discovery, query results, component ID/class indexes and
+  cloned text inside a synchronous read/plan. Release all these caches in
+  finally before returning to the event loop or executing actions. Nested
+  helpers share the current read cache; exceptions release it too.
+- Build one component index per DOM root instead of repeatedly searching the
+  whole root for each retained schema. Preserve runtime question matching and
+  reject ambiguous answer/control associations as before.
+- Cache at most 512 plain-text conversions; evict oldest entries at capacity.
+- Ignore observer notifications originating inside player controls/transcript
+  widgets or helper answer guides. Course structural mutations still refresh;
+  Auto continues checking at its normal cadence in foreground tabs.
+- Skip hidden-tab discovery and refresh work; hidden Auto checks visibility
+  every five seconds. Returning to the tab schedules a refresh.
+- Include readPerformance in Debug report: latest/slowest synchronous read,
+  duration, discovery nodes walked, cached-query misses and text-clone count.
+  Query counts there cover queryAll operations, not every native DOM call.
+
+Reproduction and measurement
+tests/performance.cjs models 1,000 retained question schemas, 30 rendered
+runtime question candidates and 2,970 additional DOM nodes. One call to
+visibleActivities produces:
+
+                          v2.6.4 baseline     v2.7.0
+Mocked DOM queries                 4,000           2
+Text subtree clones              30,000          30
+
+I used a temporary v2.6.4 baseline for this comparison; it is not part of
+this repository. To compare against a saved earlier version, run:
+  node tests/performance.cjs /path/to/previous-userscript.js
+  node tests/script.test.cjs
+
+These are operation counts from mocked browser APIs, not a browser speedup
+percentage. Mock timings omit browser selector, layout, paint and GC costs.
+Functional tests cover cache expiry, exceptions, replacement controls,
+mutation filtering, background tabs, scan diagnostics and existing widgets.
+
+Remaining limits
+The component Map retains fetched schemas for the document's lifetime; it
+does not retain old DOM scopes through these new caches. Evicting schemas
+without knowing the course lifecycle could lose offscreen work, so they are
+preserved. Large course payloads are still cloned/parsed when fetched.
+Course code, extensions and video decoding can independently cause stalls.
+Live readPerformance timings can identify remaining slow helper reads; a
+browser Performance trace is needed to attribute layout, GC or other scripts.
+
+2.7.1 follow-up: I measured a 552 ms synchronous helper read in live diagnostics (721 cached-query misses, 3,154 discovery nodes, 15 text clones).
+This confirms the earlier synthetic test did not cover all live costs.
+Rendered/viewport checks now also share results per synchronous read, reducing
+repeated getClientRects, getComputedStyle and getBoundingClientRect calls.
+The added test verifies those reads happen once per node per pass and are
+repeated after the cache expires. Live timing improvement is not yet measured.
+
+2.7.3 follow-up: empty real DOM roots were represented by a null index,
+accidentally enabling three native querySelector fallbacks per schema per
+empty shadow root. These were not counted by readPerformance.query counts
+(which count queryAll cache misses). An empty root now has a valid empty
+index, and repeated scope lookups also share results within each scan.
+The added benchmark models 500 schemas and 200 empty roots: native/mock DOM
+query count drops from 300,200 in v2.7.2 to 200. This is an operation-count
+reproduction, not a measured live browser speedup or full stall attribution.
+  node tests/performance.cjs /path/to/2.7.2-userscript.js
+
+2.7.5 follow-up: I found a 3,585 ms read in live diagnostics, so the
+previous fixes have not established acceptable live performance. Discovery
+now builds a reverse component-ID/label-prefix-to-root index per scan rather
+than probing every root for every schema. Runtime question candidate arrays
+are shared, and non-question records no longer parse HTML question text on
+failed lookup. Unchanged preference CSS and status text are not rewritten.
+Scan diagnostics now name the discovery phase or individual widget plan.
+
+The root-routing benchmark (500 absent schemas, 200 populated shadow roots)
+counts Map lookups during discovery: v2.7.4 201,199; v2.7.5 1,600. The separate
+query/text-clone counts remain unchanged in that scenario. Mock execution
+does not include real style/layout/GC cost. This is evidence of removed
+repeated lookup work; it is not proof that the reported live stall is fixed.
+
+2.8.0 diagnostics
+- Lightweight Performance report uses only stored measurements; it does not
+  initiate another widget/DOM discovery pass.
+- Record performance (60s) optionally observes browser long tasks and samples
+  foreground event-loop delay. It records slow native selectors during that
+  window. All lists are capped at 30 entries and recording timers/observer are
+  released at stop, expiration or page exit. No remote collection is added.
+- Always-on bounded recent/slow-read lists preserve named phases instead of
+  replacing a multi-second sample with a final zero-ms read. Counts include
+  roots walked, component-scope lookups, style checks and query cache misses.
+- Response rewriting, popup lookup and recovery container scans are included
+  in named timings. Their elapsed time can include browser style/layout work.
+- A 250 ms Auto read budget throws at cooperative checkpoints and cancels
+  pending actions. Over-budget reads also suspend background refreshes, with
+  the panel/report left reachable. An explicit Start auto retries the work.
+- No watchdog can interrupt an already-running native DOM, layout or JSON
+  operation. This feature limits repeated stalls; it does not establish the
+  root cause of the original stall. Browser long tasks can include other
+  scripts; overlapping helper phases are not causal attribution.
+
+To investigate, reproduce once with recording enabled and copy Performance
+report after the stall or performance pause. Prefer that over the full Debug
+report while investigating freezes, because full Debug still inspects DOM.
+
+Installation
+Replace the installed userscript with netacad-local.user.js, save, and reload
+the course tab. Reload releases the old script's observers, timers and data.
+
+2.8.2 — repeated pause after retry (2026-11-19)
+I found discovery reads hitting 267 ms and 277 ms, stopping Auto
+with a completed summary and a resolved Next. labelText cloned course DOM
+before removing injected/hidden children. Cloning custom elements can run
+constructors and copies the entire subtree before cleanup. Text extraction
+now traverses original text nodes, skipping guide/hidden subtrees and creating
+no element copies. This removes that potential source of work and side effects;
+no live browser trace was available to establish the exact cause of the freeze.
+
+Auto discovery now yields after eight schemas or approximately 12 ms, releases
+all read caches, and starts a fresh DOM scan for the next chunk. Stop, hiding
+the tab, or route changes cancel discovery. The 250 ms budget remains for an
+individual synchronous chunk; a single native browser call cannot be interrupted.
+One composed click/focus event is handled once across shadow-root listeners.
+Mocked regressions cover yield/cancellation, read-only text extraction, hidden
+text exclusion, and event deduplication. Existing native completion/navigation
+checks remain in place. Live course performance still requires verification.
+
+2.8.3 — follow-up cleanup (2026-11-19)
+Shared component eligibility checks now run before scope lookup, rather than
+resolving hidden/deleted/unavailable models and discarding them afterward.
+A single visible-activity collector and ordering function serve both synchronous
+and chunked discovery; chunked discovery no longer allocates/sorts a singleton
+list for each record. Batch size and time target are named constants.
+Runtime question fallback checks rendering before reading an offscreen widget's
+text, avoiding hidden retained matches. Delayed actions and question Submit
+recheck the lesson route and cancellation token before clicking. Discovery
+reports a small copied summary without DOM references; its total elapsed time
+includes yields, unlike synchronous read samples. Mocked checks cover these
+changes and retain native completion/navigation regressions.
+
+2.8.4 — Module 9 results navigation (2026-11-19)
+My 2.8.3 diagnostics show Auto running, no performance pause, and a maximum
+recorded synchronous read of 22 ms. The completed Module 9 page had a native
+Next arrow to Practice Final Exam Modules 1-9, but shellSectionComplete only
+recognized numbered sections, introduction boundaries and generic Checkpoint
+Exam destinations. Named top-level exam targets now resolve against their own
+unique outline entry and its immediately preceding completed source. A source
+module must match moduleNumber and have its own 100%; an assessment source
+requires its active results screen and a fully answered numbered strip.
+Mocked regressions cover this transition, practice-to-final navigation,
+incomplete/wrong source modules, nonadjacent targets and duplicate targets.
+
+2.9.0 — continuous course Auto (2026-11-19)
+The Module 10 report shows a fresh frame, autoTicks=0, no discovery run and no
+performance pause. Auto was lost at the frame boundary: the old handoff only
+recorded anchors with href, whereas shell Next arrows are buttons. An explicit
+Start now stores running intent in tab sessionStorage keyed by course ID.
+Replacement frames resume that intent after their course components load;
+pagehide stops the old worker without clearing intent. Stop clears intent.
+Performance pauses persist as paused and cannot silently restart after reload.
+Control exceptions retain intent and retry with bounded 1–30 second backoff;
+reports expose the last exception and consecutive retry count. Successful
+checks reset the backoff. Native completion and unavailable-control checks
+remain required, and the 250 ms scan guard remains enabled. No progress
+records or grades are modified by these lifecycle changes.
+Mocked checks simulate Module 9→10→11 frame replacement, same-course reload,
+Stop, isolation from other courses/launches, a persisted scan pause, and control
+error retry. I still need to test the frame lifecycle in a live course.
+
+2.9.1 — matching badge collision (2026-11-19)
+My diagnostics show a pending ten-pair objectMatching widget with Submit disabled.
+One source has badge A, while the unassigned answer begins with the word A.
+The old confirmation regex interpreted that first word as an assigned A badge
+and skipped the actual click. Public regressions use invented matching pairs.
+Confirmation now removes the complete schema labels and compares only the
+remaining badge text. Non-native matching retains its existing fallback.
+Mocked regressions cover this collision, shuffled badges, retry after a click
+does not register, and a ten-pair Auto run that scrolls to the remaining answer
+and submits only after the course enables Submit.
+
+2.9.2 — literal feature endpoint ambiguity (2026-11-20)
+My diagnostics show a seven-pair pending objectMatching question whose heading is
+visible but all controls are below the viewport. A feature is literally named
+"A", while another source has the connection badge A. The old
+whole-subtree exact-text leaf search could not uniquely distinguish those A
+leaves and returned no control, preventing Auto's scroll actions from running.
+Native endpoints now resolve within the category/option column, comparing the
+full expected label with an optional extra badge. Offscreen rendered controls
+remain eligible; injected guides are excluded and duplicate controls still
+block the plan. Highlighting uses the same typed lookup. Generic widget
+fallbacks remain available when native column controls are absent.
+Status identifies the unresolved pair and source/answer; Debug report includes
+per-pair resolution and confirmation flags. Mocked regressions reproduce the
+seven invented feature labels, duplicate A leaves, all controls initially
+offscreen, native connection assignment, enabled Submit and genuine completion
+markers. Ambiguous duplicate features are separately checked. I still need to verify this fix in a live course.
+
+2.9.3 — paused final-second playback recovery (2026-11-20)
+I found a paused 5:48/5:49 video, Auto running and no scan
+pause. The old resumedMedia WeakSet permanently suppressed further play()
+calls after the first attempt, including rejected attempts or a pause caused
+by asynchronous seeking. Per-player playback state now allows retries with
+2–30 second backoff, waits for seeking to finish, and permits recovery from
+a play promise pending at least 10 seconds, subject to backoff. Promise
+settlements are associated with their attempt sequence. The one-time seek
+and real course completion checks are preserved. Playback errors do not
+overwrite Stop's status, and detached players are not resumed by stale plans.
+Debug media fields expose native timing/state/error codes and retry state.
+Mocked regressions cover re-pausing, seeking, rejected/throwing/pending play,
+retry rate bounds, detached players, and recovery from 5:48 to native course
+completion before allowing the next section. I still need to verify this fix in a live course.
+
+2.9.4 — duplicate choice distractors (2026-11-20)
+My diagnostics show two identical distractors, plus two distinct choices.
+Public regressions use invented labels that retain punctuation and digits.
+The old per-item unique-text lookup resolved only the distinct labels
+and rejected the entire plan as 2 of 4 controls. Choice resolution now groups
+equal normalized text, requires consistent schema selection flags within each
+group and the matching number of distinct controls, and applies that shared
+requirement to all controls in the group. Nested wrappers are collapsed while
+sibling options remain distinct. Conflicting duplicate flags remain blocked,
+and duplicated selected choices require checkboxes to avoid radio toggling.
+Debug report includes expected selection flags and resolved control IDs.
+Mocked regressions cover shuffled radio options, clearing an old
+radio selection by choosing the unique correct answer, assessment footer
+submission, conflicting duplicate flags, and clearing duplicate checkboxes.
+I still need to verify this fix in a live course.
+
+2.9.5 — Adobe Animate Firewall Operation (2026-11-20)
+I identified the remaining required component as adobe-animate with
+webComponentEvent completion, a blank button and one range input. No handler
+previously recognized this component type, so the ordinary lesson fallback
+returned no actions. Auto now handles its native playback controls: start the
+unique unlabeled button/timeline player once, or a uniquely labeled Play
+button; observe timeline progress; wait for native course completion. It does
+not write the slider or dispatch a completion event. Explicit Play can be
+retried after a stall; an unknown blank toggle is not repeatedly clicked.
+Progress starting during an action delay cancels that click to avoid pausing
+playback. Multiple ambiguous controls are rejected. Debug exposes playback
+labels, timeline range/value and serializable observation state.
+Mocked regressions cover this player structure, offscreen Play preparation,
+completion-gated Next, delay-time progress, explicit resume, and ambiguity.
+I still need to verify this fix in a live course.
+
+2.9.6 — offscreen Security Quiz Start (2026-11-20)
+I found the quiz heading entering the viewport below a
+completed conclusion; Auto repeatedly reports an unresolved adaptiveStartScreen.
+Its old exactControl lookup required Start already in the viewport, while the
+visible intro scope prevented the course from scrolling further. Start now
+resolves offscreen rendered controls and prepares by scrolling the button into
+view. Missing/ambiguous Start status includes the configured label.
+A click no longer permanently excludes that Start button: if the intro stays
+open, it can retry after 10, then 20, then 30 seconds. Before each click it
+rechecks button availability, uniqueness and the absence of a question strip.
+Mocked regressions cover a visible intro with Start below the viewport, an
+unregistered first click, questions appearing during the retry delay, and a
+second offscreen Start that makes the controls ambiguous. I still need to verify this fix in a live course.
+
+2.9.7 — literal text matching and release preparation
+The final-exam report exposed a second HTML decode of normalized choice
+text. Choice lookup now consumes already-decoded text, preserving literal
+angle brackets and entity-looking strings. Two regressions cover native
+selection/submission and single decoding. All 153 mocked tests pass. I still need to verify this fix in a live course.
+I added local release validation,
+checksummed artifacts, repository documentation, GPLv3 text, and CI.
+
+2.9.8 — final result to collapsed certification practice destination
+My live diagnostics show no unfinished activities and a complete final,
+but the certification practice destination has no rendered outline leaf.
+Shell navigation now also accepts an active assessment result with a fully
+answered contiguous strip and the route's own unique top-level outline entry
+at 100%. This does not use unrelated completed modules. Two new mocked
+regressions verify the 45-question transition, one click, no Reset/Review
+clicks, and refusal of incomplete, missing, unrelated or ambiguous evidence.
+All 155 mocked tests pass. I still need to verify this fix in a live course.
+
+3.0.0 — certification exam groups and partial results strips
+I found a completed 220-1101 result inside a 50%-complete certification group.
+Only Q37–Q80 appeared in the rendered strip, so neither the group's 100%
+requirement nor a strip starting at Q1 could authorize the next exam.
+I added a separate results transition that requires native page completion,
+a unique active Result Page, answered rendered questions with unique positive
+numbers, and a unique following exam in the same route-owned outline group.
+I strip the native points suffix when matching exam titles. I leave final
+assessment submission's full contiguous answered-strip requirement intact.
+I verified all 159 mocked regression checks. I still need to verify this
+navigation fix in a live course.
+
+3.0.1 — unlabeled final-exam question strip and assessment capture
+I found an open final exam with an unlabeled Q1 strip button and no captured
+question schemas. I separated detection of native Q-number buttons from the
+strict labeled answered-strip check used for final submission. I also added
+passive observation of supported same-origin assessment XMLHttpRequest JSON
+responses and hyphenated adaptive-assessment fetch routes. I leave native
+XHR request arguments and response bodies unchanged and add no requests.
+When question data is missing, I show a specific status instead of recovering
+the hidden intro repeatedly. I include bounded button details and aggregate
+capture counts in Debug report. I verified 165 mocked tests; I still need to
+verify this fix in a live course. I cannot infer unseen question metadata
+from a screenshot or guarantee support for a different server-side schema.
+
+3.0.2 — secure assessment endpoint and SMV selection metadata
+I traced the missing question to the HTTPS endpoint
+ssac-backend.netacad.com/v3/getQuestionAt/. Its wrapped mcq component omits
+_shouldBeSelected and carries SMV outcome interpretation strings instead.
+I added this exact host/path to existing fetch and XHR capture. I derive a
+local choice view only for single-choice questions when every interpretation
+matches positive credit for one option and zero for all others, agrees on
+the same 1-based index, and stays within the original item array. Native
+selection flags take precedence. I preserve scoring data and XHR responses.
+I added a sanitized fixture without account/course identifiers and verified
+172 mocked tests, including randomized labels and native submission. I still
+need to verify this fix in a live course. Other scoring formats stay unsupported.
+
+3.0.3 — successive secure questions and retained models
+I confirmed that Q1 completed in a live session while Q2 had no captured
+matching schema. The Q2 response uses the same scoring format and endpoint.
+I expanded existing HTTPS v3 response inspection on the secure backend to
+include supported component records in state payloads. I use native response
+URLs and accept URL-like inputs from other browser contexts. I bind indexed
+question models to their requesting route and active native question number
+so an earlier retained question cannot remain pending after advancing.
+Reviewing an earlier numbered question makes its model eligible again.
+I added a sanitized Q2 fixture and verified all 179 mocked tests, including
+a two-question Auto run, repeated endpoint requests, restored state, late
+responses and retained earlier widgets. These tests cover the capture and
+transition gaps; I still need to verify this fix in the live course.
+
+3.0.4 — multiple-selection SMV interpretation and nested nextQuestion
+I reproduced the choose-three response format; the public fixture uses invented labels.
+Its scoring strings use both a full-credit option list and a per-correct-option
+rule. I parse these exact grammars into option sets, require agreement across
+all interpretations, validate unique in-range indices and the required count,
+and match native checkbox labels by text. I leave scoring fields unchanged.
+I bind a nested nextQuestion to its own index, rather than the prior answer's
+index. I also expose bounded interpretation text in diagnostics and retire
+locally submitted retained widgets after native advancement or results.
+I verified 188 mocked tests. I still need to verify this fix in a live course.
+
+3.0.5 — native final Submit Page without answered aria-labels
+I reproduced the final 60-question review whose Q-number buttons have no
+answered accessibility labels. I added an alternate eligibility check for a
+unique active Submit Page, a full Q1–Qn strip with no active question, one
+bound confirmation checkbox and the native final Submit control. I keep the
+existing answered-label check for other assessments. I confirm first, wait
+for native enabling, revalidate after delays and submit once per control.
+I verified 194 mocked tests, including offscreen strip entries, disabled
+Submit, malformed strips, ambiguous confirmation and route cancellation.
+I still need to verify this fix in a live course.
